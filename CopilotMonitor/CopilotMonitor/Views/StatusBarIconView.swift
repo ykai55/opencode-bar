@@ -14,6 +14,7 @@ final class StatusBarIconView: NSView {
     private var hasError = false
     private var loadingAnimationTimer: Timer?
     private var loadingRotationDegrees: CGFloat = 0
+    private var applicationStateObservers: [NSObjectProtocol] = []
 
     /// Called whenever the intrinsic width may have changed.
     var onIntrinsicContentSizeDidChange: (() -> Void)?
@@ -79,6 +80,13 @@ final class StatusBarIconView: NSView {
 
     deinit {
         stopLoadingAnimation()
+        removeApplicationStateObservers()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        registerApplicationStateObserversIfNeeded()
+        applyWindowActivityAppearance()
     }
 
     private var textColor: NSColor {
@@ -198,6 +206,46 @@ final class StatusBarIconView: NSView {
         if let statusText {
             let textOrigin = NSPoint(x: textStartX + textSpacing, y: yOffset)
             drawStatusText(statusText, at: textOrigin, color: color)
+        }
+    }
+
+    private func registerApplicationStateObserversIfNeeded() {
+        guard applicationStateObservers.isEmpty else { return }
+
+        let center = NotificationCenter.default
+        let becameActive = center.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: NSApp,
+            queue: .main
+        ) { [weak self] _ in
+            self?.applyWindowActivityAppearance()
+        }
+
+        let resignedActive = center.addObserver(
+            forName: NSApplication.didResignActiveNotification,
+            object: NSApp,
+            queue: .main
+        ) { [weak self] _ in
+            self?.applyWindowActivityAppearance()
+        }
+
+        applicationStateObservers = [becameActive, resignedActive]
+    }
+
+    private func removeApplicationStateObservers() {
+        guard !applicationStateObservers.isEmpty else { return }
+        let center = NotificationCenter.default
+        for observer in applicationStateObservers {
+            center.removeObserver(observer)
+        }
+        applicationStateObservers.removeAll()
+    }
+
+    private func applyWindowActivityAppearance() {
+        let targetAlpha: CGFloat = NSApp.isActive ? 1.0 : 0.6
+        if alphaValue != targetAlpha {
+            alphaValue = targetAlpha
+            statusBarIconLogger.debug("Applied status bar icon alpha: \(targetAlpha, privacy: .public)")
         }
     }
 
